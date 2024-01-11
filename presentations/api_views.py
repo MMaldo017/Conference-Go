@@ -1,18 +1,21 @@
 from django.http import JsonResponse
 from common.json import ModelEncoder
-from .models import Presentation
+from .models import Presentation, Status
 from events.models import Conference
 from django.views.decorators.http import require_http_methods
 import json
 
-
+class ConferenceListEncoder(ModelEncoder):
+    model = Conference
+    properties = ["name"]
 class PresentationListEncoder(ModelEncoder):
     model = Presentation
     properties = [
-        "title",
-        "status",
+        "title"
+        ]
+    def get_extra_data(self, o):
+        return {"status": o.status.name}
 
-    ]
 class PresentationDetailEncoder(ModelEncoder):
     model = Presentation
     properties = [
@@ -23,6 +26,11 @@ class PresentationDetailEncoder(ModelEncoder):
         "synopsis",
         "created",
     ]
+    encoders = {
+        "conference": ConferenceListEncoder(),
+    }
+    def get_extra_data(self, o):
+        return {"status": o.status.name}
 
 @require_http_methods(["GET", "POST"])
 def api_list_presentations(request, conference_id):
@@ -57,33 +65,54 @@ def api_list_presentations(request, conference_id):
     # ]
     # return JsonResponse({"presentations": presentations})
 
+    # if request.method == "GET":
+    #     presentation = Presentation.create(**content)
+    #     return JsonResponse(
+    #         {"presentation": presentation},
+    #         encoder=PresentationListEncoder,
+    #     )
+    # else:
+    #     content = json.loads(request.body)
+
+    # # Get the Location object and put it in the content dict
+    #     # try:
+    #     #     presentation = Presentation.get(id=content["presentation"])
+    #     #     content["presentation"] = presentation
+    #     # except Presentation.DoesNotExist:
+    #     #     return JsonResponse(
+    #     #         {"message": "Invalid location id"},
+    #     #         status=400,
+    #     # )
+    #     try:
+    #         conference = Conference.objects.get(id=conference_id)
+    #         content["conference"] = conference
+    #     except Conference.DoesNotExist:
+    #         return JsonResponse(
+    #             {"message": "Invalid location id"},
+    #             status=400,
+    #     )
+
+    #     presentation = Presentation.create(**content)
+    #     return JsonResponse(
+    #         presentation,
+    #         encoder=PresentationDetailEncoder,
+    #         safe=False,
+    #     )
     if request.method == "GET":
-        presentation = Presentation.create(**content)
-        return JsonResponse(
-            {"presentation": presentation},
-            encoder=PresentationListEncoder,
-        )
+        presentations = Presentation.objects.filter(conference=conference_id)
+        return JsonResponse({"presentations": presentations},
+                        encoder=PresentationListEncoder)
     else:
         content = json.loads(request.body)
-
-    # Get the Location object and put it in the content dict
-        # try:
-        #     presentation = Presentation.get(id=content["presentation"])
-        #     content["presentation"] = presentation
-        # except Presentation.DoesNotExist:
-        #     return JsonResponse(
-        #         {"message": "Invalid location id"},
-        #         status=400,
-        # )
+        # Get the Location object and put it in the content dict
         try:
             conference = Conference.objects.get(id=conference_id)
             content["conference"] = conference
-        except Conference.DoesNotExist:
+        except Presentation.DoesNotExist:
             return JsonResponse(
-                {"message": "Invalid location id"},
+                {"message": "Invalid presentation id"},
                 status=400,
-        )
-
+            )
         presentation = Presentation.create(**content)
         return JsonResponse(
             presentation,
@@ -94,8 +123,7 @@ def api_list_presentations(request, conference_id):
 
 
 
-
-
+@require_http_methods(["DELETE", "GET", "PUT"])
 def api_show_presentation(request, id):
     """
     Returns the details for the Presentation model specified
@@ -121,9 +149,45 @@ def api_show_presentation(request, id):
         }
     }
     """
-    presentation = Presentation.objects.get(id=id)
-    return JsonResponse(
-        presentation,
-        encoder=PresentationDetailEncoder,
-        safe=False,
-    )
+    if request.method == "GET":
+        presentation = Presentation.objects.get(id=id)
+        return JsonResponse(
+                presentation,
+            encoder=PresentationDetailEncoder,
+            safe=False,
+        )
+    elif request.method == "DELETE":
+        count, _ = Presentation.objects.filter(id=id).delete()
+        return JsonResponse({"deleted": count > 0})
+    else:
+        # copied from create
+        content = json.loads(request.body)
+        try:
+            # new code
+            if "status" in content:
+                status = Status.objects.get(name=content["status"])
+                content["status"] = status
+        except Status.DoesNotExist:
+            return JsonResponse(
+                {"message": "Invalid state abbreviation"},
+                status=400,
+            )
+        try:
+            # new code
+            if "conference" in content:
+                conference = Conference.objects.get(name=content["conference"])
+                content["conference"] = conference
+        except Conference.DoesNotExist:
+            return JsonResponse(
+                {"message": "Invalid state abbreviation"},
+                status=400,
+            )
+        # new code
+        Presentation.objects.filter(id=id).update(**content)
+        # copied from get detail
+        presentation = Presentation.objects.get(id=id)
+        return JsonResponse(
+            presentation,
+            encoder=PresentationDetailEncoder,
+            safe=False,
+        )

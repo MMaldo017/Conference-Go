@@ -36,6 +36,7 @@ class ConferenceDetailEncoder(ModelEncoder):
         "ends",
         "created",
         "updated",
+        "location",
     ]
     encoders = {
         "location": LocationListEncoder(),
@@ -99,7 +100,7 @@ def api_list_conferences(request):
 
 
 
-
+@require_http_methods(["DELETE", "GET", "PUT"])
 def api_show_conference(request, id):
     """
     Returns the details for the Conference model specified
@@ -125,12 +126,38 @@ def api_show_conference(request, id):
         }
     }
     """
-    conference = Conference.objects.get(id=id)
-    return JsonResponse(
-        conference,
-        encoder=ConferenceDetailEncoder,
-        safe=False,
-    )
+    if request.method == "GET":
+        conference = Conference.objects.get(id=id)
+        return JsonResponse(
+            # {
+                conference,
+                encoder=ConferenceDetailEncoder,
+                safe=False
+        )
+    elif request.method == "DELETE":
+        count, _ = Location.objects.filter(id=id).delete()
+        return JsonResponse({"deleted": count > 0})
+    else:
+        # copied from create
+        content = json.loads(request.body)
+        try:
+            # new code
+            if "location" in content:
+                location = Location.objects.get(name=content["location"])
+                content["location"] = location
+        except Location.DoesNotExist:
+            return JsonResponse(
+                {"message": "Invalid location"},
+                status=400,
+            )
+        Conference.objects.filter(id=id).update(**content)
+        # copied from get detail
+        conference = Conference.objects.get(id=id)
+        return JsonResponse(
+            conference,
+            encoder=ConferenceDetailEncoder,
+            safe=False,
+        )
 
 
 
@@ -157,27 +184,32 @@ def api_list_locations(request):
     if request.method == "GET":
 
         locations = Location.objects.all()
+        response = []
+        for location in locations:
+            response.append({
+                "name": location.name,
+                "href": location.get_api_url()
+            })
         return JsonResponse(
             {"locations": locations},
             encoder=LocationListEncoder,
         )
-    else:
-        content = json.loads(request.body)
     try:
+        content = json.loads(request.body)
+    # Get the State object and put it in the content dict
         state = State.objects.get(abbreviation=content["state"])
-        content["state"]=state
-        location = Location.objects.create(**content)
+        content["state"] = state
     except State.DoesNotExist:
         return JsonResponse(
             {"message": "Invalid state abbreviation"},
-            status = 400
+            status=400,
         )
     location = Location.objects.create(**content)
     return JsonResponse(
-            location,
-            encoder=LocationDetailEncoder,
-            safe = False,
-        )
+        location,
+        encoder=LocationDetailEncoder,
+        safe=False,
+    )
     # for location in locations:
     #     response.append(
     #         {
