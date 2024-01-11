@@ -55,3 +55,20 @@ class Presentation(models.Model):
 
     class Meta:
         ordering = ("title",)  # Default ordering for presentation
+
+    def approve(self):
+        status= Status.objects.get(name="Approved")
+        self.status = status
+        self.save()
+
+    def reject(self):
+        status = Status.objects.get(name="Rejected")
+        self.status = status
+        self.save()(m)
+
+    @classmethod
+    def create(cls, **kwargs):
+        kwargs["status"] = Status.objects.get(name="SUBMITTED")
+        presentation = cls(**kwargs)
+        presentation.save()
+        return presentation
