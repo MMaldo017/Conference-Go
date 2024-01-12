@@ -3,6 +3,7 @@ from common.json import ModelEncoder
 from .models import Conference, Location, State
 from django.views.decorators.http import require_http_methods
 import json
+from .acls import get_photo_url, get_weather_data
 class LocationListEncoder(ModelEncoder):
     model = Location
     properties = [
@@ -16,6 +17,7 @@ class LocationDetailEncoder(ModelEncoder):
         # "room_court",
         "created",
         "updated",
+        "pic_url",
     ]
     def get_extra_data(self, o):
         return {"state": o.state.abbreviation}
@@ -128,9 +130,14 @@ def api_show_conference(request, id):
     """
     if request.method == "GET":
         conference = Conference.objects.get(id=id)
+         # Use the city and state's abbreviation in the content dictionary
+        # to call the get_photo ACL function
+        weather_data = get_weather_data(conference.location.city, conference.location.state.name)
+        # Use the returned dictionary to update the content dictionary
+
         return JsonResponse(
             # {
-                conference,
+                {"conference": conference, "weather": weather_data},
                 encoder=ConferenceDetailEncoder,
                 safe=False
         )
@@ -204,6 +211,12 @@ def api_list_locations(request):
             {"message": "Invalid state abbreviation"},
             status=400,
         )
+    #get photo_url from pexels api
+    print(content["city"])
+    pic_url = get_photo_url(content["city"])
+    content['pic_url']= pic_url
+
+
     location = Location.objects.create(**content)
     return JsonResponse(
         location,
